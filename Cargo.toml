@@ -1,0 +1,14 @@
+[package]
+name = "mailproc"
+version = "0.1.0"
+authors = ["Todd Mortimer <todd@opennet.ca>"]
+edition = "2018"
+
+[dependencies]
+mailparse = "0.6.4"
+toml = "0.4.10"
+regex = "1.1.0"
+serde = "1.0.86"
+serde_derive = "1.0.86"
+dirs = "1.0.4"
+subprocess = "0.1.18"
