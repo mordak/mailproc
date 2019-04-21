@@ -196,6 +196,10 @@ fn run() -> i32 {
     std::io::stdin().read_to_end(&mut input_buf).unwrap();
     let parsed_mail = mailparse::parse_mail(&input_buf).unwrap();
 
+    info!("Handling mail From: {:?}, Subj: {:?}",
+          parsed_mail.headers.get_first_value("From"),
+          parsed_mail.headers.get_first_value("Subject"));
+
     for rule in config.rules {
         info!("Testing rule: {:?}", rule);
 
