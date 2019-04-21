@@ -161,12 +161,12 @@ fn init_log() {
         _ => PathBuf::from(""),
     };
     log.push("mailproc.log");
-    WriteLogger::new(LevelFilter::Info,
+    WriteLogger::init(LevelFilter::Info,
                      LogConfig::default(),
                      OpenOptions::new()
                      .create(true)
                      .append(true)
-                     .open(log).unwrap());
+                     .open(log).unwrap()).unwrap();
 }
 
 
