@@ -4,6 +4,7 @@ extern crate dirs;
 extern crate mailparse;
 #[macro_use]
 extern crate serde_derive;
+extern crate structopt;
 
 use std::io::Read;
 use std::fs::File;
@@ -13,6 +14,7 @@ use regex::Regex;
 use regex::bytes::Regex as BytesRegex;
 use mailparse::*;
 use subprocess::{Popen, Redirection, PopenConfig};
+use structopt::StructOpt;
 
 #[derive(Deserialize,Clone,Debug)]
 struct Rule {
@@ -41,10 +43,10 @@ struct Job {
 }
 
 impl Job {
-    fn run(action: &Vec<String>, input: &Vec<u8>) -> Job {
+    fn run(action: &Vec<String>, input: Option<&[u8]>) -> Job {
 
         let mut p = Popen::create(action, PopenConfig {
-            stdin:  Redirection::Pipe,
+            stdin:  if input.is_some() { Redirection::Pipe } else { Redirection::None },
             stdout: Redirection::Pipe,
             stderr: Redirection::Pipe,
             ..Default::default()
@@ -52,7 +54,7 @@ impl Job {
 
         let mut stdout = None;
         let mut stderr = None;
-        match p.communicate_bytes(Some(input)) {
+        match p.communicate_bytes(input) {
             Ok((out, err)) => {
                 stdout = out;
                 stderr = err;
@@ -67,7 +69,18 @@ impl Job {
             stderr: stderr,
         };
         job
+    }
 
+    fn success(&self) -> bool {
+        if self.subprocess.exit_status().is_some() {
+            return self.subprocess.exit_status().unwrap().success();
+        }
+        false
+    }
+
+    fn found(program: String) -> bool {
+        let which = vec!["which".to_string(), program];
+        Job::run(&which, None).success()
     }
 }
 
@@ -77,24 +90,84 @@ struct Config {
     rules: Vec<Rule>,       
 }
 
-fn get_config() -> Config {
-    let mut conf = match dirs::home_dir() {
-        Some(path) => path,
-        _ => PathBuf::from(""),
-    };
-    conf.push(".mailproc.conf");
-    let mut f = File::open(&conf)
-        .expect(&format!("Could not open config file {:?}.", &conf));
-    let mut buf = String::new();
-    f.read_to_string(&mut buf).unwrap();
-    let config: Config = toml::from_str(&buf)
-        .expect(&format!("Could not parse config file {:?}.", &conf));
-    config
+impl Config {
+	fn new() -> Config {
+		let mut conf = match dirs::home_dir() {
+			Some(path) => path,
+			_ => PathBuf::from(""),
+        };
+        conf.push(".mailproc.conf");
+        let mut f = File::open(&conf)
+            .expect(&format!("Could not open config file {:?}.", &conf));
+        let mut buf = String::new();
+        f.read_to_string(&mut buf).unwrap();
+        let config: Config = toml::from_str(&buf)
+            .expect(&format!("Could not parse config file {:?}.", &conf));
+        config
+    }
+
+    fn test(&self) -> bool {
+        let mut success = true;
+        for rule in &self.rules {
+            if let Some(actions) = &rule.action {
+                for action in actions {
+                    success &= if action.len() > 0 {
+                        let found = Job::found(action[0].clone());
+                        if !found {
+                            println!("{} not found", action[0]);
+                        }
+                        found
+                    } else {
+                        println!("Empty action for rule {:?}", rule);
+                        false
+                    }
+                }
+            }
+
+            if let Some(filter) = & rule.filter {
+                success &= if filter.len() > 0 {
+                    let found = Job::found(filter[0].clone());
+                    if !found {
+                        println!("{} not found", filter[0]);
+                    }
+                    found
+                } else {
+                    println!("Empty filter for rule {:?}", rule);
+                    false
+                }
+            }
+        }
+        success
+	}
 }
 
+#[derive(StructOpt, Debug)]
+struct Opt {
+	/// Test configuration and exit
+	#[structopt(short = "t", long = "test")]
+    test: bool,
+}
 
 fn main() {
-    let config = get_config();
+    std::process::exit(run());
+}
+
+fn run() -> i32 {
+
+	let opt = Opt::from_args();
+    let config = Config::new();
+
+	if opt.test {
+        let success = config.test();
+        if !success {
+            println!("Config FAIL");
+            return 1;
+        } else {
+            println!("Config OK");
+        }
+        return 0;
+	}
+
     let mut input_buf = Vec::<u8>::new();
     std::io::stdin().read_to_end(&mut input_buf).unwrap();
     let parsed_mail = mailparse::parse_mail(&input_buf).unwrap();
@@ -105,13 +178,12 @@ fn main() {
         // If there is a filter, then run it and collect the output
         let mut filter_res = match rule.filter {
             None => None,
-            Some(ref filter) => Some(Job::run(&filter, &input_buf)),
+            Some(ref filter) => Some(Job::run(&filter, Some(&input_buf))),
         };
 
         // If there was a filter, then grab its output if it was successful
         let filter_buffer = match filter_res {
-            Some(ref mut job) if job.subprocess.exit_status().is_some() && 
-                job.subprocess.exit_status().unwrap().success()=> {
+            Some(ref mut job) if job.success() => {
                     Some(job.stdout.take().unwrap())
                 },
             Some(ref job) => {
@@ -198,7 +270,7 @@ fn main() {
             if let Some(actions) = rule.action {
                 for action in actions {
                     println!("Doing action {:?}", action);
-                    let job = Job::run(&action, &buffer);
+                    let job = Job::run(&action, Some(&buffer));
                     println!("Result: {:?}", job.subprocess.exit_status());
                 }
             } else {
@@ -208,4 +280,5 @@ fn main() {
             break;
         }
     }
+    0
 }
