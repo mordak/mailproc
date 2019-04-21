@@ -5,9 +5,12 @@ extern crate mailparse;
 #[macro_use]
 extern crate serde_derive;
 extern crate structopt;
+#[macro_use]
+extern crate log;
+extern crate simplelog;
 
 use std::io::Read;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
 use std::collections::HashMap;
 use regex::Regex;
@@ -15,6 +18,8 @@ use regex::bytes::Regex as BytesRegex;
 use mailparse::*;
 use subprocess::{Popen, Redirection, PopenConfig};
 use structopt::StructOpt;
+use simplelog::{LevelFilter, WriteLogger};
+use simplelog::Config as LogConfig;
 
 #[derive(Deserialize,Clone,Debug)]
 struct Rule {
@@ -87,7 +92,7 @@ impl Job {
 #[derive(Deserialize,Clone)]
 struct Config {
     version: usize,
-    rules: Vec<Rule>,       
+    rules: Vec<Rule>,
 }
 
 impl Config {
@@ -148,13 +153,30 @@ struct Opt {
     test: bool,
 }
 
+
+fn init_log() {
+
+    let mut log = match dirs::home_dir() {
+        Some(path) => path,
+        _ => PathBuf::from(""),
+    };
+    log.push("mailproc.log");
+    WriteLogger::new(LevelFilter::Info,
+                     LogConfig::default(),
+                     OpenOptions::new()
+                     .create(true)
+                     .append(true)
+                     .open(log).unwrap());
+}
+
+
 fn main() {
     std::process::exit(run());
 }
 
 fn run() -> i32 {
 
-	let opt = Opt::from_args();
+    let opt = Opt::from_args();
     let config = Config::new();
 
 	if opt.test {
@@ -168,13 +190,15 @@ fn run() -> i32 {
         return 0;
 	}
 
+    init_log();
+
     let mut input_buf = Vec::<u8>::new();
     std::io::stdin().read_to_end(&mut input_buf).unwrap();
     let parsed_mail = mailparse::parse_mail(&input_buf).unwrap();
 
     for rule in config.rules {
-        println!("Testing rule: {:?}", rule);
-        
+        info!("Testing rule: {:?}", rule);
+
         // If there is a filter, then run it and collect the output
         let mut filter_res = match rule.filter {
             None => None,
@@ -187,7 +211,7 @@ fn run() -> i32 {
                     Some(job.stdout.take().unwrap())
                 },
             Some(ref job) => {
-                println!("Rule filter failed: {:?} => {:?}: {:?}",
+                error!("Rule filter failed: {:?} => {:?}: {:?}",
                          rule.filter,
                          job.subprocess.exit_status(),
                          job.stderr);
@@ -214,7 +238,7 @@ fn run() -> i32 {
             _ => &parsed_mail,
         };
 
-        // And start the business of matching. 
+        // And start the business of matching.
         // Create a Match struct for each of the message parts we can match,
         // then for each of those parts, test all the rules.
         let mut mail_match = Match {
@@ -266,15 +290,15 @@ fn run() -> i32 {
         }
 
         if mail_match.matched() {
-            println!("Matched rule: {:?}", rule);
+            info!("Matched rule: {:?}", rule);
             if let Some(actions) = rule.action {
                 for action in actions {
-                    println!("Doing action {:?}", action);
+                    info!("Doing action {:?}", action);
                     let job = Job::run(&action, Some(&buffer));
-                    println!("Result: {:?}", job.subprocess.exit_status());
+                    info!("Result: {:?}", job.subprocess.exit_status());
                 }
             } else {
-                println!("No action, message dropped");
+                info!("No action, message dropped");
             }
             // break rule processing loop
             break;
