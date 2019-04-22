@@ -202,8 +202,6 @@ fn run() -> i32 {
           parsed_mail.headers.get_first_value("Subject"));
 
     for rule in config.rules {
-        info!("Testing rule: {:?}", rule);
-
         // If there is a filter, then run it and collect the output
         let mut filter_res = match rule.filter {
             None => None,
