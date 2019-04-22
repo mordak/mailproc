@@ -3,6 +3,12 @@ name = "mailproc"
 version = "0.2.1"
 authors = ["Todd Mortimer <todd@opennet.ca>"]
 edition = "2018"
+description = "Process email based on contents, like procmail."
+repository = "https://github.com/mordak/mailproc"
+readme = "README.md"
+keywords = ["procmail", "email"]
+categories = ["command-line-utilities", "email"]
+license = "MIT"
 
 [dependencies]
 mailparse = "0.6.4"
