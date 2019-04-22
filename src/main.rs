@@ -21,7 +21,7 @@ use structopt::StructOpt;
 use simplelog::{LevelFilter, WriteLogger};
 use simplelog::Config as LogConfig;
 
-#[derive(Deserialize,Clone,Debug)]
+#[derive(Deserialize, Clone, Debug)]
 struct Rule {
     headers: Option<Vec<HashMap<String, String>>>,
     body: Option<Vec<Vec<String>>>,
@@ -50,12 +50,19 @@ struct Job {
 impl Job {
     fn run(action: &Vec<String>, input: Option<&[u8]>) -> Job {
 
-        let mut p = Popen::create(action, PopenConfig {
-            stdin:  if input.is_some() { Redirection::Pipe } else { Redirection::None },
-            stdout: Redirection::Pipe,
-            stderr: Redirection::Pipe,
-            ..Default::default()
-        }).expect("Could not spawn child process");
+        let mut p = Popen::create(
+            action,
+            PopenConfig {
+                stdin: if input.is_some() {
+                    Redirection::Pipe
+                } else {
+                    Redirection::None
+                },
+                stdout: Redirection::Pipe,
+                stderr: Redirection::Pipe,
+                ..Default::default()
+            },
+        ).expect("Could not spawn child process");
 
         let mut stdout = None;
         let mut stderr = None;
@@ -64,7 +71,7 @@ impl Job {
                 stdout = out;
                 stderr = err;
             }
-            _ => ()
+            _ => (),
         }
         let _ = p.wait();
 
@@ -89,25 +96,24 @@ impl Job {
     }
 }
 
-#[derive(Deserialize,Clone)]
+#[derive(Deserialize, Clone)]
 struct Config {
     version: usize,
     rules: Vec<Rule>,
 }
 
 impl Config {
-	fn new() -> Config {
-		let mut conf = match dirs::home_dir() {
-			Some(path) => path,
-			_ => PathBuf::from(""),
+    fn new() -> Config {
+        let mut conf = match dirs::home_dir() {
+            Some(path) => path,
+            _ => PathBuf::from(""),
         };
         conf.push(".mailproc.conf");
-        let mut f = File::open(&conf)
-            .expect(&format!("Could not open config file {:?}.", &conf));
+        let mut f = File::open(&conf).expect(&format!("Could not open config file {:?}.", &conf));
         let mut buf = String::new();
         f.read_to_string(&mut buf).unwrap();
-        let config: Config = toml::from_str(&buf)
-            .expect(&format!("Could not parse config file {:?}.", &conf));
+        let config: Config =
+            toml::from_str(&buf).expect(&format!("Could not parse config file {:?}.", &conf));
         config
     }
 
@@ -129,7 +135,7 @@ impl Config {
                 }
             }
 
-            if let Some(filter) = & rule.filter {
+            if let Some(filter) = &rule.filter {
                 success &= if filter.len() > 0 {
                     let found = Job::found(filter[0].clone());
                     if !found {
@@ -143,14 +149,14 @@ impl Config {
             }
         }
         success
-	}
+    }
 }
 
 #[derive(StructOpt, Debug)]
 #[structopt(author = "")]
 struct Opt {
-	/// Test configuration and exit
-	#[structopt(short = "t", long = "test")]
+    /// Test configuration and exit
+    #[structopt(short = "t", long = "test")]
     test: bool,
 }
 
@@ -162,12 +168,15 @@ fn init_log() {
         _ => PathBuf::from(""),
     };
     log.push("mailproc.log");
-    WriteLogger::init(LevelFilter::Info,
-                     LogConfig::default(),
-                     OpenOptions::new()
-                     .create(true)
-                     .append(true)
-                     .open(log).unwrap()).unwrap();
+    WriteLogger::init(
+        LevelFilter::Info,
+        LogConfig::default(),
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log)
+            .unwrap(),
+    ).unwrap();
 }
 
 
@@ -180,7 +189,7 @@ fn run() -> i32 {
     let opt = Opt::from_args();
     let config = Config::new();
 
-	if opt.test {
+    if opt.test {
         let success = config.test();
         if !success {
             println!("Config FAIL");
@@ -189,7 +198,7 @@ fn run() -> i32 {
             println!("Config OK");
         }
         return 0;
-	}
+    }
 
     init_log();
 
@@ -197,9 +206,11 @@ fn run() -> i32 {
     std::io::stdin().read_to_end(&mut input_buf).unwrap();
     let parsed_mail = mailparse::parse_mail(&input_buf).unwrap();
 
-    info!("Handling mail From: {:?}, Subj: {:?}",
-          parsed_mail.headers.get_first_value("From"),
-          parsed_mail.headers.get_first_value("Subject"));
+    info!(
+        "Handling mail From: {:?}, Subj: {:?}",
+        parsed_mail.headers.get_first_value("From"),
+        parsed_mail.headers.get_first_value("Subject")
+    );
 
     for rule in config.rules {
         // If there is a filter, then run it and collect the output
@@ -210,14 +221,14 @@ fn run() -> i32 {
 
         // If there was a filter, then grab its output if it was successful
         let filter_buffer = match filter_res {
-            Some(ref mut job) if job.success() => {
-                    Some(job.stdout.take().unwrap())
-                },
+            Some(ref mut job) if job.success() => Some(job.stdout.take().unwrap()),
             Some(ref job) => {
-                error!("Rule filter failed: {:?} => {:?}: {:?}",
-                         rule.filter,
-                         job.subprocess.exit_status(),
-                         job.stderr);
+                error!(
+                    "Rule filter failed: {:?} => {:?}: {:?}",
+                    rule.filter,
+                    job.subprocess.exit_status(),
+                    job.stderr
+                );
                 None
             }
             _ => None,
@@ -254,8 +265,7 @@ fn run() -> i32 {
             for headers_set in headers_vec {
                 let mut doaction = true;
                 for (k, v) in headers_set {
-                    let re = Regex::new(&v)
-                        .expect(&format!("Could not compile regex: {}", v));
+                    let re = Regex::new(&v).expect(&format!("Could not compile regex: {}", v));
                     doaction &= match parsed.headers.get_first_value(&k) {
                         Ok(Some(ref h)) => re.is_match(h),
                         _ => false,
@@ -269,8 +279,10 @@ fn run() -> i32 {
             for body_set in body_vec {
                 let mut doaction = true;
                 for body_re in body_set {
-                    let re = Regex::new(&body_re)
-                        .expect(&format!("Could not compile regex: {}", body_re));
+                    let re = Regex::new(&body_re).expect(&format!(
+                        "Could not compile regex: {}",
+                        body_re
+                    ));
                     doaction &= match parsed.get_body() {
                         Ok(ref b) => re.is_match(b),
                         _ => false,
@@ -284,8 +296,10 @@ fn run() -> i32 {
             for raw_set in raw_vec {
                 let mut doaction = true;
                 for raw_re in raw_set {
-                    let re = BytesRegex::new(&raw_re)
-                        .expect(&format!("Could not compile regex: {}", raw_re));
+                    let re = BytesRegex::new(&raw_re).expect(&format!(
+                        "Could not compile regex: {}",
+                        raw_re
+                    ));
                     doaction &= re.is_match(&buffer);
                 }
                 mail_match.raw |= doaction;
