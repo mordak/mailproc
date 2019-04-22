@@ -84,10 +84,7 @@ impl Job {
     }
 
     fn success(&self) -> bool {
-        if self.subprocess.exit_status().is_some() {
-            return self.subprocess.exit_status().unwrap().success();
-        }
-        false
+        self.subprocess.exit_status().map_or(false, |e| e.success())
     }
 
     fn found(program: String) -> bool {
@@ -111,7 +108,7 @@ impl Config {
         conf.push(".mailproc.conf");
         let mut f = File::open(&conf).expect(&format!("Could not open config file {:?}.", &conf));
         let mut buf = String::new();
-        f.read_to_string(&mut buf).unwrap();
+        f.read_to_string(&mut buf).expect(&format!("Could not read config file: {:?}", &conf));
         let config: Config =
             toml::from_str(&buf).expect(&format!("Could not parse config file {:?}.", &conf));
         config
@@ -175,8 +172,8 @@ fn init_log() {
             .create(true)
             .append(true)
             .open(log)
-            .unwrap(),
-    ).unwrap();
+            .expect("Could not open log file"),
+    ).expect("Could not initialize write logger");
 }
 
 
@@ -189,6 +186,8 @@ fn run() -> i32 {
     let opt = Opt::from_args();
     let config = Config::new();
 
+    init_log();
+
     if opt.test {
         let success = config.test();
         if !success {
@@ -200,11 +199,21 @@ fn run() -> i32 {
         return 0;
     }
 
-    init_log();
-
     let mut input_buf = Vec::<u8>::new();
-    std::io::stdin().read_to_end(&mut input_buf).unwrap();
-    let parsed_mail = mailparse::parse_mail(&input_buf).unwrap();
+    match std::io::stdin().read_to_end(&mut input_buf) {
+        Ok(_) => (),
+        Err(e) => {
+            error!("Could not read stdin: {}", e);
+            return 2;
+        }
+    }
+    let parsed_mail = match mailparse::parse_mail(&input_buf) {
+        Ok(m) => m,
+        Err(e) => {
+            error!("Could not parse mail: {}", e);
+            return 3;
+        }
+    };
 
     info!(
         "Handling mail From: {:?}, Subj: {:?}",
@@ -221,7 +230,7 @@ fn run() -> i32 {
 
         // If there was a filter, then grab its output if it was successful
         let filter_buffer = match filter_res {
-            Some(ref mut job) if job.success() => Some(job.stdout.take().unwrap()),
+            Some(ref mut job) if job.success() => job.stdout.take(),
             Some(ref job) => {
                 error!(
                     "Rule filter failed: {:?} => {:?}: {:?}",
@@ -236,20 +245,22 @@ fn run() -> i32 {
 
         // Parse the output from the filter if there was one
         let filter_parsed = match filter_buffer {
-            Some(ref filtered) => Some(mailparse::parse_mail(filtered).unwrap()),
+            Some(ref filtered) => {
+                match mailparse::parse_mail(filtered) {
+                    Ok(m) => Some(m),
+                    Err(e) => {
+                        error!("Could not parse output from filter {:?}: {}", rule.filter, e);
+                        None
+                    }
+                }
+            },
             _ => None,
         };
 
-        // Assign the input buffer to be the original or filtered message content
-        let buffer = match filter_buffer {
-            Some(ref b) => &b,
-            _ => &input_buf,
-        };
-
-        // Assign the mailparse ref to be the original or filtered output
-        let parsed = match filter_parsed {
-            Some(ref p) => &p,
-            _ => &parsed_mail,
+        // Assign the buffer and parsed mail structs to original or filtered values
+        let (buffer, parsed) = match (&filter_buffer, &filter_parsed) {
+            (Some(ref b), Some(ref p)) => (b, p),
+            _ => (&input_buf, &parsed_mail),
         };
 
         // And start the business of matching.
@@ -265,7 +276,14 @@ fn run() -> i32 {
             for headers_set in headers_vec {
                 let mut doaction = true;
                 for (k, v) in headers_set {
-                    let re = Regex::new(&v).expect(&format!("Could not compile regex: {}", v));
+                    let re = match Regex::new(&v) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            error!("Could not compile regex {}: {}", v, e);
+                            doaction &= false;
+                            continue
+                        }
+                    };
                     doaction &= match parsed.headers.get_first_value(&k) {
                         Ok(Some(ref h)) => re.is_match(h),
                         _ => false,
@@ -279,10 +297,14 @@ fn run() -> i32 {
             for body_set in body_vec {
                 let mut doaction = true;
                 for body_re in body_set {
-                    let re = Regex::new(&body_re).expect(&format!(
-                        "Could not compile regex: {}",
-                        body_re
-                    ));
+                    let re = match Regex::new(&body_re) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            error!("Could not compile regex {}: {}", body_re, e);
+                            doaction &= false;
+                            continue
+                        }
+                    };
                     doaction &= match parsed.get_body() {
                         Ok(ref b) => re.is_match(b),
                         _ => false,
@@ -296,10 +318,14 @@ fn run() -> i32 {
             for raw_set in raw_vec {
                 let mut doaction = true;
                 for raw_re in raw_set {
-                    let re = BytesRegex::new(&raw_re).expect(&format!(
-                        "Could not compile regex: {}",
-                        raw_re
-                    ));
+                    let re = match BytesRegex::new(&raw_re) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            error!("Could not compile regex {}: {}", raw_re, e);
+                            doaction &= false;
+                            continue
+                        }
+                    };
                     doaction &= re.is_match(&buffer);
                 }
                 mail_match.raw |= doaction;
