@@ -98,7 +98,7 @@ action = [
 ]
 ```
 
-A configuration file can be tested using the `-t` option. The config test will parse `mailproc.conf` and verify that the program given in any `action` or `filter` rule elements exists and is executable. A successful test will print `Config OK` and return exit status `0`. A failed test will print `Config FAIL` and return exit status `1`, along with any error output.
+A configuration file can be tested using the `-t` option. The config test will parse `mailproc.conf` and verify that the program given in any `action` or `filter` rule elements exists and is executable, and that any regular expressions found in the `headers`, `body` and `raw` sections parse correctly. A successful test will print `Config OK` and return exit status `0`. A failed test will print `Config FAIL` and return exit status `1`, along with any error output.
 
 ```
 $ mailproc -t                                                                           

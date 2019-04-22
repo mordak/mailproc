@@ -108,7 +108,10 @@ impl Config {
         conf.push(".mailproc.conf");
         let mut f = File::open(&conf).expect(&format!("Could not open config file {:?}.", &conf));
         let mut buf = String::new();
-        f.read_to_string(&mut buf).expect(&format!("Could not read config file: {:?}", &conf));
+        f.read_to_string(&mut buf).expect(&format!(
+            "Could not read config file: {:?}",
+            &conf
+        ));
         let config: Config =
             toml::from_str(&buf).expect(&format!("Could not parse config file {:?}.", &conf));
         config
@@ -142,6 +145,72 @@ impl Config {
                 } else {
                     println!("Empty filter for rule {:?}", rule);
                     false
+                }
+            }
+
+            if let Some(headers_vec) = &rule.headers {
+                if headers_vec.len() == 0 {
+                    println!("Empty headers set for rule {:?}", rule);
+                    success &= false;
+                }
+                for headers_set in headers_vec {
+                    if headers_set.len() == 0 {
+                        println!("Empty headers set in rule {:?}", rule);
+                        success &= false;
+                    }
+                    for (_k, v) in headers_set {
+                        success &= match Regex::new(&v) {
+                            Ok(_) => true,
+                            Err(e) => {
+                                println!("Could not compile regex {}: {}", v, e);
+                                false
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(body_vec) = &rule.body {
+                if body_vec.len() == 0 {
+                    println!("Empty body set in rule {:?}", rule);
+                    success &= false;
+                }
+                for body_set in body_vec {
+                    if body_set.len() == 0 {
+                        println!("Empty body set in rule {:?}", rule);
+                        success &= false;
+                    }
+                    for r in body_set {
+                        success &= match Regex::new(&r) {
+                            Ok(_) => true,
+                            Err(e) => {
+                                println!("Could not compile regex {}: {}", r, e);
+                                false
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(raw_vec) = &rule.raw {
+                if raw_vec.len() == 0 {
+                    println!("Empty raw set in rule {:?}", rule);
+                    success &= false;
+                }
+                for raw_set in raw_vec {
+                    if raw_set.len() == 0 {
+                        println!("Empty raw set in rule {:?}", rule);
+                        success &= false;
+                    }
+                    for r in raw_set {
+                        success &= match Regex::new(&r) {
+                            Ok(_) => true,
+                            Err(e) => {
+                                println!("Could not compile regex {}: {}", r, e);
+                                false
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -249,11 +318,15 @@ fn run() -> i32 {
                 match mailparse::parse_mail(filtered) {
                     Ok(m) => Some(m),
                     Err(e) => {
-                        error!("Could not parse output from filter {:?}: {}", rule.filter, e);
+                        error!(
+                            "Could not parse output from filter {:?}: {}",
+                            rule.filter,
+                            e
+                        );
                         None
                     }
                 }
-            },
+            }
             _ => None,
         };
 
@@ -281,7 +354,7 @@ fn run() -> i32 {
                         Err(e) => {
                             error!("Could not compile regex {}: {}", v, e);
                             doaction &= false;
-                            continue
+                            continue;
                         }
                     };
                     doaction &= match parsed.headers.get_first_value(&k) {
@@ -302,7 +375,7 @@ fn run() -> i32 {
                         Err(e) => {
                             error!("Could not compile regex {}: {}", body_re, e);
                             doaction &= false;
-                            continue
+                            continue;
                         }
                     };
                     doaction &= match parsed.get_body() {
@@ -323,7 +396,7 @@ fn run() -> i32 {
                         Err(e) => {
                             error!("Could not compile regex {}: {}", raw_re, e);
                             doaction &= false;
-                            continue
+                            continue;
                         }
                     };
                     doaction &= re.is_match(&buffer);
