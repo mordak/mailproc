@@ -147,6 +147,7 @@ impl Config {
 }
 
 #[derive(StructOpt, Debug)]
+#[structopt(author = "")]
 struct Opt {
 	/// Test configuration and exit
 	#[structopt(short = "t", long = "test")]
