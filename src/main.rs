@@ -8,15 +8,19 @@ extern crate structopt;
 #[macro_use]
 extern crate log;
 extern crate simplelog;
+extern crate fs2;
 
 use std::io::Read;
 use std::fs::{File, OpenOptions};
+use std::fmt::{Display, Formatter};
+use fs2::*;
 use std::path::PathBuf;
 use std::collections::HashMap;
 use regex::Regex;
 use regex::bytes::Regex as BytesRegex;
 use mailparse::*;
 use subprocess::{Popen, Redirection, PopenConfig};
+use subprocess::ExitStatus::*;
 use structopt::StructOpt;
 use simplelog::{LevelFilter, WriteLogger};
 use simplelog::Config as LogConfig;
@@ -28,6 +32,47 @@ struct Rule {
     raw: Option<Vec<Vec<String>>>,
     action: Option<Vec<Vec<String>>>,
     filter: Option<Vec<String>>,
+}
+
+impl Display for Rule {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let headertext: Option<String> = self.headers.as_ref().map(|vec| {
+            vec.iter()
+                .map(|hash| {
+                    format!(
+                        "({})",
+                        hash.iter()
+                            .map(|(key, value)| format!("({}: {})", key, value))
+                            .collect::<Vec<String>>()
+                            .join(" AND ")
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join(" OR ")
+        });
+
+        let bodytext: Option<String> = self.body.as_ref().map(|vec| {
+            vec.iter()
+                .map(|vec2| format!("({})", vec2.join(" AND ")))
+                .collect::<Vec<String>>()
+                .join(" OR ")
+        });
+
+        let rawtext: Option<String> = self.raw.as_ref().map(|vec| {
+            vec.iter()
+                .map(|vec2| format!("({})", vec2.join(" AND ")))
+                .collect::<Vec<String>>()
+                .join(" OR ")
+        });
+
+        write!(
+            f,
+            "headers: {}; body: {}; raw: {}",
+            headertext.unwrap_or_default(),
+            bodytext.unwrap_or_default(),
+            rawtext.unwrap_or_default()
+        )
+    }
 }
 
 struct Match {
@@ -234,15 +279,15 @@ fn init_log() {
         _ => PathBuf::from(""),
     };
     log.push("mailproc.log");
-    WriteLogger::init(
-        LevelFilter::Info,
-        LogConfig::default(),
-        OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(log)
-            .expect("Could not open log file"),
-    ).expect("Could not initialize write logger");
+    let logfile = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log)
+        .expect("Could not open log file");
+    logfile.lock_exclusive().expect("Could not lock log file");
+
+    WriteLogger::init(LevelFilter::Info, LogConfig::default(), logfile)
+        .expect("Could not initialize write logger");
 }
 
 
@@ -285,9 +330,11 @@ fn run() -> i32 {
     };
 
     info!(
-        "Handling mail From: {:?}, Subj: {:?}",
-        parsed_mail.headers.get_first_value("From"),
+        "Handling mail: From: {}, Subject: {}",
+        parsed_mail.headers.get_first_value("From")
+        .unwrap_or_default().unwrap_or_default(),
         parsed_mail.headers.get_first_value("Subject")
+        .unwrap_or_default().unwrap_or_default(),
     );
 
     for rule in config.rules {
@@ -406,12 +453,21 @@ fn run() -> i32 {
         }
 
         if mail_match.matched() {
-            info!("Matched rule: {:?}", rule);
-            if let Some(actions) = rule.action {
+            info!("Matched rule: {}", rule);
+            if let Some(ref actions) = rule.action {
                 for action in actions {
-                    info!("Doing action {:?}", action);
+                    info!("Doing action: {}", action.join(" "));
                     let job = Job::run(&action, Some(&buffer));
-                    info!("Result: {:?}", job.subprocess.exit_status());
+                    info!(
+                        "Result: {}",
+                        match job.subprocess.exit_status() {
+                            Some(Exited(code)) => format!("Exited: {}", code),
+                            Some(Signaled(code)) => format!("Signaled: {}", code),
+                            Some(Other(code)) => format!("Other: {}", code),
+                            Some(Undetermined) => format!("Undetermined"),
+                            None => format!("None"),
+                        }
+                    );
                 }
             } else {
                 info!("No action, message dropped");
