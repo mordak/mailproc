@@ -1,6 +1,6 @@
 [package]
 name = "mailproc"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Todd Mortimer <todd@opennet.ca>"]
 edition = "2018"
 description = "Process email based on contents, like procmail."
