@@ -1,3 +1,5 @@
+https://github.com/mordak/mailproc/workflows/Build/badge.svg
+
 # mailproc
 
 mailproc reads email on stdin and takes actions based on its contents. It can be used to file email in different folders based on content, drop unwanted mail, or execute other tasks based on mail content. It is intended as a replacement for procmail.
