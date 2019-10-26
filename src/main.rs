@@ -1,29 +1,29 @@
-extern crate toml;
-extern crate regex;
 extern crate dirs;
 extern crate mailparse;
+extern crate regex;
+extern crate toml;
 #[macro_use]
 extern crate serde_derive;
 extern crate structopt;
 #[macro_use]
 extern crate log;
-extern crate simplelog;
 extern crate fs2;
+extern crate simplelog;
 
-use std::io::Read;
-use std::fs::{File, OpenOptions};
-use std::fmt::{Display, Formatter};
 use fs2::*;
-use std::path::PathBuf;
-use std::collections::HashMap;
-use regex::Regex;
-use regex::bytes::Regex as BytesRegex;
 use mailparse::*;
-use subprocess::{Popen, Redirection, PopenConfig};
-use subprocess::ExitStatus::*;
-use structopt::StructOpt;
-use simplelog::{LevelFilter, WriteLogger};
+use regex::bytes::Regex as BytesRegex;
+use regex::Regex;
 use simplelog::Config as LogConfig;
+use simplelog::{LevelFilter, WriteLogger};
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
+use std::fs::{File, OpenOptions};
+use std::io::Read;
+use std::path::PathBuf;
+use structopt::StructOpt;
+use subprocess::ExitStatus::*;
+use subprocess::{Popen, PopenConfig, Redirection};
 
 #[derive(Deserialize, Clone, Debug)]
 struct Rule {
@@ -93,8 +93,7 @@ struct Job {
 }
 
 impl Job {
-    fn run(action: &Vec<String>, input: Option<&[u8]>) -> Job {
-
+    fn run(action: &[String], input: Option<&[u8]>) -> Job {
         let mut p = Popen::create(
             action,
             PopenConfig {
@@ -107,25 +106,22 @@ impl Job {
                 stderr: Redirection::Pipe,
                 ..Default::default()
             },
-        ).expect("Could not spawn child process");
+        )
+        .expect("Could not spawn child process");
 
         let mut stdout = None;
         let mut stderr = None;
-        match p.communicate_bytes(input) {
-            Ok((out, err)) => {
-                stdout = out;
-                stderr = err;
-            }
-            _ => (),
+        if let Ok((out, err)) = p.communicate_bytes(input) {
+            stdout = out;
+            stderr = err;
         }
         let _ = p.wait();
 
-        let job = Job {
+        Job {
             subprocess: p,
-            stdout: stdout,
-            stderr: stderr,
-        };
-        job
+            stdout,
+            stderr,
+        }
     }
 
     fn success(&self) -> bool {
@@ -151,14 +147,13 @@ impl Config {
             _ => PathBuf::from(""),
         };
         conf.push(".mailproc.conf");
-        let mut f = File::open(&conf).expect(&format!("Could not open config file {:?}.", &conf));
+        let mut f =
+            File::open(&conf).unwrap_or_else(|_| panic!("Could not open config file {:?}.", &conf));
         let mut buf = String::new();
-        f.read_to_string(&mut buf).expect(&format!(
-            "Could not read config file: {:?}",
-            &conf
-        ));
-        let config: Config =
-            toml::from_str(&buf).expect(&format!("Could not parse config file {:?}.", &conf));
+        f.read_to_string(&mut buf)
+            .unwrap_or_else(|_| panic!("Could not read config file: {:?}", &conf));
+        let config: Config = toml::from_str(&buf)
+            .unwrap_or_else(|_| panic!("Could not parse config file {:?}.", &conf));
         config
     }
 
@@ -167,7 +162,7 @@ impl Config {
         for rule in &self.rules {
             if let Some(actions) = &rule.action {
                 for action in actions {
-                    success &= if action.len() > 0 {
+                    success &= if !action.is_empty() {
                         let found = Job::found(action[0].clone());
                         if !found {
                             println!("{} not found", action[0]);
@@ -181,7 +176,7 @@ impl Config {
             }
 
             if let Some(filter) = &rule.filter {
-                success &= if filter.len() > 0 {
+                success &= if !filter.is_empty() {
                     let found = Job::found(filter[0].clone());
                     if !found {
                         println!("{} not found", filter[0]);
@@ -194,16 +189,16 @@ impl Config {
             }
 
             if let Some(headers_vec) = &rule.headers {
-                if headers_vec.len() == 0 {
+                if headers_vec.is_empty() {
                     println!("Empty headers set for rule {:?}", rule);
                     success &= false;
                 }
                 for headers_set in headers_vec {
-                    if headers_set.len() == 0 {
+                    if headers_set.is_empty() {
                         println!("Empty headers set in rule {:?}", rule);
                         success &= false;
                     }
-                    for (_k, v) in headers_set {
+                    for v in headers_set.values() {
                         success &= match Regex::new(&v) {
                             Ok(_) => true,
                             Err(e) => {
@@ -216,12 +211,12 @@ impl Config {
             }
 
             if let Some(body_vec) = &rule.body {
-                if body_vec.len() == 0 {
+                if body_vec.is_empty() {
                     println!("Empty body set in rule {:?}", rule);
                     success &= false;
                 }
                 for body_set in body_vec {
-                    if body_set.len() == 0 {
+                    if body_set.is_empty() {
                         println!("Empty body set in rule {:?}", rule);
                         success &= false;
                     }
@@ -238,12 +233,12 @@ impl Config {
             }
 
             if let Some(raw_vec) = &rule.raw {
-                if raw_vec.len() == 0 {
+                if raw_vec.is_empty() {
                     println!("Empty raw set in rule {:?}", rule);
                     success &= false;
                 }
                 for raw_set in raw_vec {
-                    if raw_set.len() == 0 {
+                    if raw_set.is_empty() {
                         println!("Empty raw set in rule {:?}", rule);
                         success &= false;
                     }
@@ -271,9 +266,7 @@ struct Opt {
     test: bool,
 }
 
-
 fn init_log() {
-
     let mut log = match dirs::home_dir() {
         Some(path) => path,
         _ => PathBuf::from(""),
@@ -290,13 +283,11 @@ fn init_log() {
         .expect("Could not initialize write logger");
 }
 
-
 fn main() {
     std::process::exit(run());
 }
 
 fn run() -> i32 {
-
     let opt = Opt::from_args();
     let config = Config::new();
 
@@ -331,10 +322,16 @@ fn run() -> i32 {
 
     info!(
         "Handling mail: From: {}, Subject: {}",
-        parsed_mail.headers.get_first_value("From")
-        .unwrap_or_default().unwrap_or_default(),
-        parsed_mail.headers.get_first_value("Subject")
-        .unwrap_or_default().unwrap_or_default(),
+        parsed_mail
+            .headers
+            .get_first_value("From")
+            .unwrap_or_default()
+            .unwrap_or_default(),
+        parsed_mail
+            .headers
+            .get_first_value("Subject")
+            .unwrap_or_default()
+            .unwrap_or_default(),
     );
 
     for rule in config.rules {
@@ -361,19 +358,16 @@ fn run() -> i32 {
 
         // Parse the output from the filter if there was one
         let filter_parsed = match filter_buffer {
-            Some(ref filtered) => {
-                match mailparse::parse_mail(filtered) {
-                    Ok(m) => Some(m),
-                    Err(e) => {
-                        error!(
-                            "Could not parse output from filter {:?}: {}",
-                            rule.filter,
-                            e
-                        );
-                        None
-                    }
+            Some(ref filtered) => match mailparse::parse_mail(filtered) {
+                Ok(m) => Some(m),
+                Err(e) => {
+                    error!(
+                        "Could not parse output from filter {:?}: {}",
+                        rule.filter, e
+                    );
+                    None
                 }
-            }
+            },
             _ => None,
         };
 
@@ -464,8 +458,8 @@ fn run() -> i32 {
                             Some(Exited(code)) => format!("Exited: {}", code),
                             Some(Signaled(code)) => format!("Signaled: {}", code),
                             Some(Other(code)) => format!("Other: {}", code),
-                            Some(Undetermined) => format!("Undetermined"),
-                            None => format!("None"),
+                            Some(Undetermined) => "Undetermined".to_string(),
+                            None => "None".to_string(),
                         }
                     );
                 }
