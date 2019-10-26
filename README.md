@@ -1,4 +1,4 @@
-https://github.com/mordak/mailproc/workflows/Build/badge.svg
+![](https://github.com/mordak/mailproc/workflows/Build/badge.svg)
 
 # mailproc
 
