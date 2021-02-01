@@ -1,4 +1,5 @@
 ![](https://github.com/mordak/mailproc/workflows/Build/badge.svg)
+![](https://img.shields.io/badge/maintenance-passively%20maintained-green)
 
 # mailproc
 
