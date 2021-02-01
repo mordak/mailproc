@@ -1,4 +1,4 @@
-extern crate dirs;
+extern crate dirs_next;
 extern crate mailparse;
 extern crate regex;
 extern crate toml;
@@ -82,7 +82,7 @@ struct Match {
 }
 impl Match {
     fn matched(&self) -> bool {
-        (self.headers && self.body && self.raw)
+        self.headers && self.body && self.raw
     }
 }
 
@@ -142,7 +142,7 @@ struct Config {
 
 impl Config {
     fn new() -> Config {
-        let mut conf = match dirs::home_dir() {
+        let mut conf = match dirs_next::home_dir() {
             Some(path) => path,
             _ => PathBuf::from(""),
         };
@@ -259,7 +259,6 @@ impl Config {
 }
 
 #[derive(StructOpt, Debug)]
-#[structopt(author = "")]
 struct Opt {
     /// Test configuration and exit
     #[structopt(short = "t", long = "test")]
@@ -267,7 +266,7 @@ struct Opt {
 }
 
 fn init_log() {
-    let mut log = match dirs::home_dir() {
+    let mut log = match dirs_next::home_dir() {
         Some(path) => path,
         _ => PathBuf::from(""),
     };
@@ -323,14 +322,12 @@ fn run() -> i32 {
     info!(
         "Handling mail: From: {}, Subject: {}",
         parsed_mail
-            .headers
+            .get_headers()
             .get_first_value("From")
-            .unwrap_or_default()
             .unwrap_or_default(),
         parsed_mail
-            .headers
+            .get_headers()
             .get_first_value("Subject")
-            .unwrap_or_default()
             .unwrap_or_default(),
     );
 
@@ -398,8 +395,8 @@ fn run() -> i32 {
                             continue;
                         }
                     };
-                    doaction &= match parsed.headers.get_first_value(&k) {
-                        Ok(Some(ref h)) => re.is_match(h),
+                    doaction &= match parsed.get_headers().get_first_value(&k) {
+                        Some(ref h) => re.is_match(h),
                         _ => false,
                     }
                 }
