@@ -334,7 +334,10 @@ fn run() -> i32 {
 
     for rule in config.rules {
         // If there is a filter, then run it and collect the output
-        let mut filter_res = rule.filter.as_ref().map(|filter| Job::run(filter, Some(&input_buf)));
+        let mut filter_res = rule
+            .filter
+            .as_ref()
+            .map(|filter| Job::run(filter, Some(&input_buf)));
 
         // If there was a filter, then grab its output if it was successful
         let filter_buffer = match filter_res {
