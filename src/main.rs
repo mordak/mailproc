@@ -136,6 +136,7 @@ impl Job {
 
 #[derive(Deserialize, Clone)]
 struct Config {
+    #[allow(dead_code)]
     version: usize,
     rules: Vec<Rule>,
 }
@@ -199,7 +200,7 @@ impl Config {
                         success &= false;
                     }
                     for v in headers_set.values() {
-                        success &= match Regex::new(&v) {
+                        success &= match Regex::new(v) {
                             Ok(_) => true,
                             Err(e) => {
                                 println!("Could not compile regex {}: {}", v, e);
@@ -221,7 +222,7 @@ impl Config {
                         success &= false;
                     }
                     for r in body_set {
-                        success &= match Regex::new(&r) {
+                        success &= match Regex::new(r) {
                             Ok(_) => true,
                             Err(e) => {
                                 println!("Could not compile regex {}: {}", r, e);
@@ -243,7 +244,7 @@ impl Config {
                         success &= false;
                     }
                     for r in raw_set {
-                        success &= match Regex::new(&r) {
+                        success &= match Regex::new(r) {
                             Ok(_) => true,
                             Err(e) => {
                                 println!("Could not compile regex {}: {}", r, e);
@@ -333,10 +334,7 @@ fn run() -> i32 {
 
     for rule in config.rules {
         // If there is a filter, then run it and collect the output
-        let mut filter_res = match rule.filter {
-            None => None,
-            Some(ref filter) => Some(Job::run(&filter, Some(&input_buf))),
-        };
+        let mut filter_res = rule.filter.as_ref().map(|filter| Job::run(filter, Some(&input_buf)));
 
         // If there was a filter, then grab its output if it was successful
         let filter_buffer = match filter_res {
@@ -387,7 +385,7 @@ fn run() -> i32 {
             for headers_set in headers_vec {
                 let mut doaction = true;
                 for (k, v) in headers_set {
-                    let re = match Regex::new(&v) {
+                    let re = match Regex::new(v) {
                         Ok(r) => r,
                         Err(e) => {
                             error!("Could not compile regex {}: {}", v, e);
@@ -395,7 +393,7 @@ fn run() -> i32 {
                             continue;
                         }
                     };
-                    doaction &= match parsed.get_headers().get_first_value(&k) {
+                    doaction &= match parsed.get_headers().get_first_value(k) {
                         Some(ref h) => re.is_match(h),
                         _ => false,
                     }
@@ -408,7 +406,7 @@ fn run() -> i32 {
             for body_set in body_vec {
                 let mut doaction = true;
                 for body_re in body_set {
-                    let re = match Regex::new(&body_re) {
+                    let re = match Regex::new(body_re) {
                         Ok(r) => r,
                         Err(e) => {
                             error!("Could not compile regex {}: {}", body_re, e);
@@ -429,7 +427,7 @@ fn run() -> i32 {
             for raw_set in raw_vec {
                 let mut doaction = true;
                 for raw_re in raw_set {
-                    let re = match BytesRegex::new(&raw_re) {
+                    let re = match BytesRegex::new(raw_re) {
                         Ok(r) => r,
                         Err(e) => {
                             error!("Could not compile regex {}: {}", raw_re, e);
@@ -437,7 +435,7 @@ fn run() -> i32 {
                             continue;
                         }
                     };
-                    doaction &= re.is_match(&buffer);
+                    doaction &= re.is_match(buffer);
                 }
                 mail_match.raw |= doaction;
             }
@@ -448,7 +446,7 @@ fn run() -> i32 {
             if let Some(ref actions) = rule.action {
                 for action in actions {
                     info!("Doing action: {}", action.join(" "));
-                    let job = Job::run(&action, Some(&buffer));
+                    let job = Job::run(action, Some(buffer));
                     info!(
                         "Result: {}",
                         match job.subprocess.exit_status() {
